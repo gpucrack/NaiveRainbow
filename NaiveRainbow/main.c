@@ -2,12 +2,13 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdbool.h>
 #include <string.h>
 #include <openssl/sha.h>
 #include <assert.h>
 
 // The max password length in the rainbow tables.
-#define MAX_PASSWORD_LENGTH 2
+#define MAX_PASSWORD_LENGTH 3
 
 // The hash function used.
 #define HASH_FUNCTION SHA1
@@ -16,24 +17,27 @@
 #define HASH_LENGTH 20
 
 // The number of rows in the table.
-#define TABLE_M 30
+#define TABLE_M 1000
 
 // The size of a chain in the table.
 #define TABLE_T 10000
 
 // The number of tables.
-#define TABLE_COUNT 3
+#define TABLE_COUNT 4
 
 /*
 	A rainbow table.
 
-	The endings points are an array of plain texts.
-	The starting point is the plain text of the first raw,
+	The endpoints are an array of plain texts.
+	The startpoint is the plain text of the first raw,
 	as an unsigned int.
+
+	A NULL endpoint means that the chain has been pruned
+	from the table.
 */
 typedef struct {
-	unsigned int starting_point;
-	char** ending_points;
+	unsigned int startpoint;
+	char** endpoints;
 } RainbowTable;
 
 /*
@@ -75,7 +79,7 @@ char char_in_range(unsigned char n) {
 	We sum in an array of the size of the plain text and
 	take the modulo to get an alphanumeric char.
 */
-void reduce(unsigned char cipher_text[], unsigned int iteration, char* plain_text) {
+void reduce_cipher(unsigned char cipher_text[], unsigned int iteration, char* plain_text) {
 	unsigned int sum[MAX_PASSWORD_LENGTH] = { 0 };
 	unsigned int current_index = 0;
 
@@ -96,6 +100,29 @@ void reduce(unsigned char cipher_text[], unsigned int iteration, char* plain_tex
 	plain_text[current_index] = '\0';
 }
 
+/*
+	Transforms a startpoint from a counter to a valid password.
+	Note that the last character of the counter is the MSB.
+
+	The implementation uses bit shifting as I didn't think of
+	another way of doing this, as a result it only works if the
+	range of characters is a multiple of 2.
+*/
+void reduce_startpoint(unsigned int counter, char* plain_text) {
+	int i;
+	for (i = 0; i < MAX_PASSWORD_LENGTH; i++) {
+		// get the character corresponding to the last 6 bits
+		plain_text[i] = char_in_range(counter & 63);
+		// right shift the counter by 6 bits (2^6 == 64 values)
+		counter >>= 6;
+
+		if (!counter) {
+			break;
+		}
+	}
+
+	plain_text[i + 1] = '\0';
+}
 
 /*
 	Generates a rainbow table of size `TABLE_M*TABLE_T`, where
@@ -106,17 +133,17 @@ void reduce(unsigned char cipher_text[], unsigned int iteration, char* plain_tex
 	rainbow tables so they're not all similar.
 */
 RainbowTable gen_table(unsigned int counter_start) {
-	char** ending_points = malloc(sizeof(char*) * TABLE_M);
-	assert(ending_points != NULL);
+	char** endpoints = malloc(sizeof(char*) * TABLE_M);
+	assert(endpoints != NULL);
 
 	// generate all rows
 	for (unsigned int i = 0; i < TABLE_M; i++) {
 		// generate the chain
-		ending_points[i] = malloc(sizeof(char) * MAX_PASSWORD_LENGTH + 1);
-		assert(ending_points[i] != NULL);
+		endpoints[i] = malloc(sizeof(char) * MAX_PASSWORD_LENGTH + 1);
+		assert(endpoints[i] != NULL);
 
 		char last_plain_text[MAX_PASSWORD_LENGTH + 1];
-		sprintf(last_plain_text, "%u", counter_start + i);
+		reduce_startpoint(counter_start + i, last_plain_text);
 
 		/*
 			Apply a round of hash + reduce `TABLE_T - 1` times.
@@ -127,41 +154,57 @@ RainbowTable gen_table(unsigned int counter_start) {
 		for (unsigned int j = 0; j < TABLE_T - 1; j++) {
 			unsigned char cipher_text[HASH_LENGTH];
 			HASH_FUNCTION(last_plain_text, strlen(last_plain_text), cipher_text);
-			reduce(cipher_text, j, last_plain_text);
+			reduce_cipher(cipher_text, j, last_plain_text);
 		}
 
-		strcpy(ending_points[i], last_plain_text);
+		// insert only if the row is unique.
+		// else, we mark the endpoint as NULL.
+		bool merge = false;
+		for (unsigned int j = 0; j < i; j++) {
+			if (endpoints[j] && !strcmp(last_plain_text, endpoints[j])) {
+				merge = true;
+				break;
+			}
+		}
+
+		if (merge) {
+			free(endpoints[i]);
+			endpoints[i] = NULL;
+		}
+		else {
+			strcpy(endpoints[i], last_plain_text);
+		}
 	}
 
-	return (RainbowTable) { counter_start, ending_points };
+	return (RainbowTable) { counter_start, endpoints };
 }
 
-/*
-	Deletes a table.
-*/
+// Deletes a table.
 void del_table(RainbowTable table) {
 	for (unsigned int i = 0; i < TABLE_M; i++) {
-		free(table.ending_points[i]);
+		free(table.endpoints[i]);
 	}
 
-	free(table.ending_points);
+	free(table.endpoints);
 }
 
 // Pretty-prints the hash of a cipher text.
 void print_hash(unsigned char cipher_text[]) {
 	for (int i = 0; i < HASH_LENGTH; i++) {
-		printf("%x", cipher_text[i]);
+		printf("%02x", cipher_text[i]);
 	}
 }
 
 // Pretty-prints a rainbow table.
 void print_table(RainbowTable table) {
 	for (unsigned int i = 0; i < TABLE_M; i++) {
+		char startpoint[MAX_PASSWORD_LENGTH + 1];
+		reduce_startpoint(table.startpoint + i, startpoint);
+
 		printf(
-			"%d -> ... -> %.*s\n",
-			table.starting_point + i,
-			MAX_PASSWORD_LENGTH,
-			table.ending_points[i]
+			"%s -> ... -> %s\n",
+			startpoint,
+			table.endpoints[i]
 		);
 	}
 }
@@ -171,20 +214,17 @@ void print_matrix(RainbowTable table) {
 	for (unsigned int i = 0; i < TABLE_M; i++) {
 		char plain_text[MAX_PASSWORD_LENGTH + 1];
 		unsigned char cipher_text[HASH_LENGTH];
-		sprintf(plain_text, "%u", table.starting_point + i);
+		reduce_startpoint(table.startpoint + i, plain_text);
 
 		for (unsigned int j = 0; j < TABLE_T - 1; j++) {
 			HASH_FUNCTION(plain_text, strlen(plain_text), cipher_text);
 			printf("%s -> ", plain_text);
 			print_hash(cipher_text);
 			printf(" -> ");
-			reduce(cipher_text, j, plain_text);
+			reduce_cipher(cipher_text, j, plain_text);
 		}
 
 		printf("%s\n", plain_text);
-
-		// the last plain text/ should be the endpoint
-		assert(!strcmp(plain_text, table.ending_points[i]));
 	}
 }
 
@@ -193,12 +233,6 @@ void print_matrix(RainbowTable table) {
 	Generates all rainbow tables needed.
 */
 void offline(RainbowTable* rainbow_tables) {
-	// make sure the counter of the starting point doesn't overflow
-	// the plain text length
-	char max_counter_length[128];
-	sprintf(max_counter_length, "%u", TABLE_COUNT * TABLE_M);
-	assert(strlen(max_counter_length) <= MAX_PASSWORD_LENGTH);
-
 	for (int i = 0; i < TABLE_COUNT; i++) {
 		rainbow_tables[i] = gen_table(i * TABLE_M);
 	}
@@ -223,23 +257,23 @@ void online(RainbowTable* rainbow_tables, unsigned char* cipher, char* password)
 
 			// get the reduction of the cipher text corresponding to the current column
 			for (unsigned int k = j; k < TABLE_T - 2; k++) {
-				reduce(column_cipher_text, k, column_plain_text);
+				reduce_cipher(column_cipher_text, k, column_plain_text);
 				HASH_FUNCTION(column_plain_text, strlen(column_plain_text), column_cipher_text);
 			}
-			reduce(column_cipher_text, TABLE_T - 2, column_plain_text);
+			reduce_cipher(column_cipher_text, TABLE_T - 2, column_plain_text);
 
 			// iterate through all rows to check if it'a an endpoint
 			for (unsigned int k = 0; k < TABLE_M; k++) {
 				// we found a matching endpoint
-				if (!strcmp(rainbow_tables[i].ending_points[k], column_plain_text)) {
+				if (rainbow_tables[i].endpoints[k] && !strcmp(rainbow_tables[i].endpoints[k], column_plain_text)) {
 					// re-construct the chain
 					char chain_plain_text[MAX_PASSWORD_LENGTH + 1];
 					unsigned char chain_cipher_text[HASH_LENGTH];
-					sprintf(chain_plain_text, "%u", rainbow_tables[i].starting_point + k);
+					reduce_startpoint(rainbow_tables[i].startpoint + k, chain_plain_text);
 
 					for (unsigned int l = 0; l < j; l++) {
 						HASH_FUNCTION(chain_plain_text, strlen(chain_plain_text), chain_cipher_text);
-						reduce(chain_cipher_text, l, chain_plain_text);
+						reduce_cipher(chain_cipher_text, l, chain_plain_text);
 					}
 					HASH_FUNCTION(chain_plain_text, strlen(chain_plain_text), chain_cipher_text);
 
@@ -263,28 +297,34 @@ void online(RainbowTable* rainbow_tables, unsigned char* cipher, char* password)
 
 int main() {
 	RainbowTable rainbow_tables[TABLE_COUNT];
+
+	printf("Generating tables...\n");
 	offline(rainbow_tables);
 
-	for (int i = 0; i < TABLE_COUNT; i++) {
-		print_table(rainbow_tables[i]);
-		printf("\n");
-	}
+	// to print a table
+	print_table(rainbow_tables[0]);
 
 	// to print the full matrix
 	// print_matrix(rainbow_tables[0]);
 
-	char* password = "ll";
+	char* password = "pls";
 	unsigned char cipher[HASH_LENGTH];
 	HASH_FUNCTION(password, strlen(password), cipher);
 
+	printf("Looking for password '%s', hashed as ", password);
+	print_hash(cipher);
+	printf(".\n\n");
+
 	char found[MAX_PASSWORD_LENGTH + 1];
+
+	printf("Starting attack...\n");
 	online(rainbow_tables, cipher, found);
 
 	if (!strcmp(found, "")) {
-		printf("No password found for the given hash.");
+		printf("No password found for the given hash.\n");
 	}
 	else {
-		printf("Password '%s' found for the given hash!", found);
+		printf("Password '%s' found for the given hash!\n", found);
 	}
 
 	for (int i = 0; i < TABLE_COUNT; i++) {
