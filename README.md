@@ -17,16 +17,10 @@ Generating tables...
 9 -> ... -> tE8
 A -> ... -> KOT
 B -> ... -> LFF
-C -> ... -> (null)
 D -> ... -> j6b
 E -> ... -> 2p1
 F -> ... -> TE
 G -> ... -> Cgm
-H -> ... -> NFU
-I -> ... -> (null)
-J -> ... -> lBp
-K -> ... -> WFd
-L -> ... -> (null)
 ...
 
 Looking for password 'pls', hashed as b1432db0088f669789237117d35b0b8e14768d10.
@@ -45,17 +39,12 @@ Password 'pls' found for the given hash!
 
 ## Installation
 
-### Windows
+- Installer OpenSSL 1.1 (prendre une version précompilée sur Windows, `apt-get install libssl-dev` pour Linux)
+- Installer cmake si ce n'est pas déjà fait
 
-- Installer OpenSSL 1.1 (prendre une version précompilée)  
-- Avec Visual Studio, ouvrir NaiveRainbow.sln
-- Ajouter le répertoire `include/` dans les répertoires d'include additionnels
-- Ajouter le répertoire `lib/` dans les répertoires de bibliothèques additionnelles
-- Ajouter `libssl.lib` et `libcrypto.lib` dans les dépendances additionnelles
-
-### Linux
-
-- Installer OpenSSL 1.1 (avec un `apt-get install libssl-dev` j'imagine)
-- Compiler le main.c avec `gcc -I [dossier /include] -L [dossier /lib] -lssl -lcrypto` je pense que ça devrait marcher.
-
-A terme on devrait trouver un système de build qui satisfait tout le monde (Linux & Windows). Peut-être un fichier cmake.
+```bash
+$ mkdir build
+$ cd build
+$ cmake ..
+$ cmake --build .
+```
