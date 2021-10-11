@@ -1,29 +1,8 @@
-#define _CRT_SECURE_NO_WARNINGS
-
 #include <assert.h>
 #include <rainbow.h>
-#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-// The max password length in the rainbow tables.
-#define MAX_PASSWORD_LENGTH 3
-
-// The hash function used.
-#define HASH_FUNCTION SHA1
-
-// The length of the cipher text produced by the hash function.
-#define HASH_LENGTH 20
-
-// The number of rows in the table.
-#define TABLE_M 1000
-
-// The size of a chain in the table.
-#define TABLE_T 10000
-
-// The number of tables.
-#define TABLE_COUNT 4
 
 int main() {
     RainbowTable rainbow_tables[TABLE_COUNT];
@@ -37,7 +16,9 @@ int main() {
     // to print the full matrix
     // print_matrix(rainbow_tables[0]);
 
-    char* password = "pls";
+    char* password = "lol";
+    assert(strlen(password) <= MAX_PASSWORD_LENGTH);
+
     unsigned char cipher[HASH_LENGTH];
     HASH_FUNCTION(password, strlen(password), cipher);
 

@@ -2,27 +2,10 @@
 
 char char_in_range(unsigned char n) {
     assert(n >= 0 && n <= 63);
+    static const char* chars =
+        "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_";
 
-    // 0..9
-    if (n < 10) {
-        return '0' + n;
-    }
-
-    // A..Z
-    if (n < 36) {
-        return 'A' + (n - 10);
-    }
-
-    // a..z
-    if (n < 62) {
-        return 'a' + (n - 36);
-    }
-
-    if (n == 62) {
-        return '-';
-    }
-
-    return '_';
+    return chars[n];
 }
 
 void reduce_cipher(unsigned char cipher_text[], unsigned int iteration,
@@ -30,16 +13,14 @@ void reduce_cipher(unsigned char cipher_text[], unsigned int iteration,
     unsigned int sum[MAX_PASSWORD_LENGTH] = {0};
     unsigned int current_index = 0;
 
-    for (unsigned int i = 0; i < HASH_LENGTH; i++) {
+    for (int i = 0; i < HASH_LENGTH; i++) {
         sum[i % MAX_PASSWORD_LENGTH] += cipher_text[i];
     }
 
-    for (unsigned int i = 0; i < MAX_PASSWORD_LENGTH; i++) {
-        unsigned int mod = (sum[i] + iteration) % 65;
-
-        // if mod == 64, skip a character (smaller password)
-        if (mod != 64) {
-            plain_text[current_index] = char_in_range(mod);
+    for (int i = 0; i < MAX_PASSWORD_LENGTH; i++) {
+        sum[i] = (sum[i] + iteration) % 65;
+        if (sum[i] != 64) {
+            plain_text[current_index] = char_in_range(sum[i]);
             current_index++;
         }
     }
@@ -48,16 +29,47 @@ void reduce_cipher(unsigned char cipher_text[], unsigned int iteration,
 }
 
 void create_startpoint(unsigned int counter, char* plain_text) {
+    int startpoint_length = 1;
+    unsigned int old_thresold = 0;
+    unsigned int thresold = 64;
+
+    // get the length of the startpoint
+    while (counter >= thresold) {
+        startpoint_length++;
+        old_thresold = thresold;
+        thresold += pow(64, startpoint_length);
+    }
+
+    // the startpoint of length `startpoint_length` should start at 0
+    counter -= old_thresold;
+
+    int i;
+    // fill the startpoint with the corresponding characters
+    for (i = startpoint_length - 1; i >= 0; i--) {
+        plain_text[i] = char_in_range(counter % 64);
+        counter /= 64;
+    }
+
+    // fill with zeros if the length is inferior to the computed length
+    for (; i >= 0; i--) {
+        plain_text[i] = char_in_range(0);
+    }
+
+    plain_text[startpoint_length] = '\0';
+}
+
+void _create_startpoint(unsigned int counter, char* plain_text) {
     int i;
     for (i = 0; i < MAX_PASSWORD_LENGTH; i++) {
         // get the character corresponding to the last 6 bits
         plain_text[i] = char_in_range(counter & 63);
-        // right shift the counter by 6 bits (2^6 == 64 values)
-        counter >>= 6;
 
         if (!counter) {
             break;
         }
+
+        // right shift the counter by 6 bits (2^6 == 64 values)
+        counter >>= 6;
     }
 
     plain_text[i + 1] = '\0';
@@ -75,12 +87,12 @@ void insert_chain(RainbowTable* table, char* startpoint, char* endpoint) {
     table->length++;
 }
 
-RainbowTable gen_table(unsigned int counter_start) {
+RainbowTable gen_table(unsigned char table_number, unsigned int m0) {
     /*
        Allocate in one contiguous block the chains. This should reduce cache
        misses, malloc calls, and make it easier later on the GPU.
     */
-    RainbowChain* chains = malloc(sizeof(RainbowChain) * TABLE_M);
+    RainbowChain* chains = malloc(sizeof(RainbowChain) * m0);
     if (!chains) {
         perror("Cannot allocate enough memory");
         exit(EXIT_FAILURE);
@@ -89,11 +101,11 @@ RainbowTable gen_table(unsigned int counter_start) {
     RainbowTable table = {chains, 0};
 
     // generate all rows
-    for (unsigned int i = 0; i < TABLE_M; i++) {
+    for (unsigned int i = 0; i < m0; i++) {
         // generate the chain
         char last_plain_text[MAX_PASSWORD_LENGTH + 1];
         char startpoint[MAX_PASSWORD_LENGTH + 1];
-        create_startpoint(counter_start + i, startpoint);
+        create_startpoint(table_number * m0 + i, startpoint);
         strcpy(last_plain_text, startpoint);
 
         /*
@@ -132,7 +144,7 @@ void print_table(RainbowTable table) {
 }
 
 void print_matrix(RainbowTable table) {
-    for (unsigned int i = 0; i < TABLE_M; i++) {
+    for (unsigned int i = 0; i < table.length; i++) {
         char plain_text[MAX_PASSWORD_LENGTH + 1];
         unsigned char cipher_text[HASH_LENGTH];
         strcpy(plain_text, table.chains[i].startpoint);
@@ -150,24 +162,45 @@ void print_matrix(RainbowTable table) {
 }
 
 void offline(RainbowTable* rainbow_tables) {
+    // the number of possible passwords
+    unsigned int n = 0;
+    for (int i = 0; i <= MAX_PASSWORD_LENGTH; i++) {
+        n += pow(64, i);
+    }
+
+    // the expected number of unique chains
+    unsigned int mtmax = 2 * n / (TABLE_T + 2);
+
+    // the starting number of chains, given the alpha coefficient
+    unsigned int m0 = TABLE_ALPHA / (1 - TABLE_ALPHA) * mtmax;
+
+    // make sure there are at least some chains for the smaller password spaces
+    if (m0 < 10) {
+        m0 = 10;
+    }
+
     for (int i = 0; i < TABLE_COUNT; i++) {
-        rainbow_tables[i] = gen_table(i * TABLE_M);
+        rainbow_tables[i] = gen_table(i, m0);
     }
 }
 
 void online(RainbowTable* rainbow_tables, unsigned char* cipher,
             char* password) {
-    for (int i = 0; i < TABLE_COUNT; i++) {
-        // iterate column by column, starting from the last plaintext
-        // https://stackoverflow.com/questions/3623263/reverse-iteration-with-an-unsigned-loop-variable
-        for (unsigned int j = TABLE_T - 1; j-- > 0;) {
+    /*
+        Iterate column by column, starting from the last plaintext.
+        https://stackoverflow.com/questions/3623263/reverse-iteration-with-an-unsigned-loop-variable
+
+        We iterate through all tables at the same time because it's faster to
+        find a match in the last columns.
+    */
+    for (unsigned int i = TABLE_T - 1; i-- > 0;) {
+        for (int j = 0; j < TABLE_COUNT; j++) {
             char column_plain_text[MAX_PASSWORD_LENGTH + 1];
             unsigned char column_cipher_text[HASH_LENGTH];
             memcpy(column_cipher_text, cipher, HASH_LENGTH);
 
-            // get the reduction corresponding to the current
-            // column
-            for (unsigned int k = j; k < TABLE_T - 2; k++) {
+            // get the reduction corresponding to the current column
+            for (unsigned int k = i; k < TABLE_T - 2; k++) {
                 reduce_cipher(column_cipher_text, k, column_plain_text);
                 HASH_FUNCTION(column_plain_text, strlen(column_plain_text),
                               column_cipher_text);
@@ -175,17 +208,17 @@ void online(RainbowTable* rainbow_tables, unsigned char* cipher,
             reduce_cipher(column_cipher_text, TABLE_T - 2, column_plain_text);
 
             // iterate through all rows to check if it'a an endpoint
-            for (unsigned int k = 0; k < TABLE_M; k++) {
+            for (unsigned int k = 0; k < rainbow_tables[j].length; k++) {
                 // we found a matching endpoint
-                if (!strcmp(rainbow_tables[i].chains[k].endpoint,
+                if (!strcmp(rainbow_tables[j].chains[k].endpoint,
                             column_plain_text)) {
                     // re-construct the chain
                     char chain_plain_text[MAX_PASSWORD_LENGTH + 1];
                     unsigned char chain_cipher_text[HASH_LENGTH];
                     strcpy(chain_plain_text,
-                           rainbow_tables[i].chains[k].startpoint);
+                           rainbow_tables[j].chains[k].startpoint);
 
-                    for (unsigned int l = 0; l < j; l++) {
+                    for (unsigned int l = 0; l < i; l++) {
                         HASH_FUNCTION(chain_plain_text,
                                       strlen(chain_plain_text),
                                       chain_cipher_text);

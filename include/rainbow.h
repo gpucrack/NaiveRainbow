@@ -1,9 +1,11 @@
 #ifndef RAINBOW_H
 #define RAINBOW_H
 
+#define _CRT_SECURE_NO_WARNINGS
+
 #include <assert.h>
+#include <math.h>
 #include <openssl/sha.h>
-#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,14 +19,18 @@
 // The length of the cipher text produced by the hash function.
 #define HASH_LENGTH 20
 
-// The number of rows in the table.
-#define TABLE_M 1000
+/*
+    The maximality factor, such as the number of chains at the end of the
+    offline phase is alpha*mtmax, where mtmax is the expected maximum number of
+    chains in a rainbow table.
+*/
+#define TABLE_ALPHA 0.952
 
-// The size of a chain in the table.
-#define TABLE_T 10000
+// The length of a chain in the table.
+#define TABLE_T 100
 
 // The number of tables.
-#define TABLE_COUNT 4
+#define TABLE_COUNT 1
 
 /*
     A chain of the rainbow table.
@@ -66,23 +72,18 @@ void reduce_cipher(unsigned char cipher_text[], unsigned int iteration,
 
 /*
     Transforms a startpoint from a counter to a valid password.
-    Note that the last character of the counter is the MSB.
-
-    The implementation uses bit shifting as I didn't think of
-    another way of doing this, as a result it only works if the
-    range of characters is a multiple of 2.
 */
 void create_startpoint(unsigned int counter, char* plain_text);
 
 /*
-    Generates a rainbow table of size `TABLE_M*TABLE_T`, where
-    `TABLE_M` is the number of rows
+    Generates a rainbow table of size `m0*TABLE_T`, where
+    `m0` is the number of rows (chains)
     `TABLE_T` is the number of plain texts in a chain.
 
-    The `counter_start` parameter is used to discriminate
+    The `table_number` parameter is used to discriminate
     rainbow tables so they're not all similar.
 */
-RainbowTable gen_table(unsigned int counter_start);
+RainbowTable gen_table(unsigned char table_number, unsigned int m0);
 
 /*
     Inserts a chain in the rainbow `table` if it's not already present. This is
