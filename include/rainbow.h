@@ -6,17 +6,18 @@
 #include <assert.h>
 #include <math.h>
 #include <openssl/sha.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 // The max password length in the rainbow tables.
-#define MAX_PASSWORD_LENGTH 3
+#define MAX_PASSWORD_LENGTH 5
 
 // The hash function used.
-#define HASH_FUNCTION SHA1
+#define HASH SHA1
 
-// The length of the cipher text produced by the hash function.
+// The length of the digest produced by the hash function.
 #define HASH_LENGTH 20
 
 /*
@@ -27,10 +28,24 @@
 #define TABLE_ALPHA 0.952
 
 // The length of a chain in the table.
-#define TABLE_T 100
+#define TABLE_T 10000
 
 // The number of tables.
-#define TABLE_COUNT 1
+#define TABLE_COUNT 4
+
+// Uncomment to show debug prints in release mode.
+#define DEBUG_TEST 1
+
+// Handy macro for debug prints.
+#if defined NDEBUG || defined DEBUG_TEST
+#define DEBUG_TEST 1
+#else
+#define DEBUG_TEST 0
+#endif
+#define DEBUG_PRINT(fmt, ...)                              \
+    do {                                                   \
+        if (DEBUG_TEST) fprintf(stderr, fmt, __VA_ARGS__); \
+    } while (0)
 
 /*
     A chain of the rainbow table.
@@ -42,67 +57,90 @@ typedef struct {
 } RainbowChain;
 
 /*
+    A way of comparing two chains to sort them by ascending endpoints.
+*/
+int compare_rainbow_chains(const void* p1, const void* p2);
+
+/*
     A rainbow table.
-    It's an array of chains, with a length.
+    It's an array of chains, with a length. We store the table number as well,
+    since multiple tables need to have different reductions functions.
 */
 typedef struct {
     RainbowChain* chains;
-    unsigned int length;
+    unsigned long length;
+    unsigned char number;
 } RainbowTable;
 
 /*
-   Returns a char in the [a-zA-Z0-9_-] range given a parameter in the
-   [0-63] range. Look at an ASCII table to better understand this function
+   Returns a char in the [a-zA-Z0-9_-] range given a parameter in the [0-63]
+   range. Look at an ASCII table to better understand this function
    (https://www.asciitable.com/).
 */
 char char_in_range(unsigned char n);
 
 /*
-    A reduce operation, which returns a plain text
-    for a given cipher text and a given `iteration`.
+    A reduce operation, which returns a plain text for a given `digest`,
+    `iteration` and `table_number`.
 
-    The nth `iteration` reduction function should give
-    the nth+1 plain text reduction.
+    The nth `iteration` reduction function should give the nth+1 plain text
+    reduction. The `table number` is to discriminate different tables.
 
-    We sum in an array of the size of the plain text and
-    take the modulo to get an alphanumeric char.
+    We sum in an array of the size of the plain text and take the modulo to get
+    an alphanumeric char.
 */
-void reduce_cipher(unsigned char cipher_text[], unsigned int iteration,
-                   char* plain_text);
+void reduce_digest(unsigned char digest[], unsigned long iteration,
+                   unsigned char table_number, char* plain_text);
 
 /*
     Transforms a startpoint from a counter to a valid password.
 */
-void create_startpoint(unsigned int counter, char* plain_text);
+void create_startpoint(unsigned long counter, char* plain_text);
 
 /*
-    Generates a rainbow table of size `m0*TABLE_T`, where
-    `m0` is the number of rows (chains)
-    `TABLE_T` is the number of plain texts in a chain.
-
-    The `table_number` parameter is used to discriminate
-    rainbow tables so they're not all similar.
+    Deduplicates endpoints in-place, given a sorted rainbow table.
+    O(n) complexity.
 */
-RainbowTable gen_table(unsigned char table_number, unsigned int m0);
+void dedup_endpoints(RainbowTable* table);
 
 /*
-    Inserts a chain in the rainbow `table` if it's not already present. This is
-    not very efficient and a HashSet data structure would be better, but let's
-    keep it simple for now.
+    Searches the rainbow table for a chain with a specific endpoint using binary
+    search, since the endpoints are sorted. O(log n) complexity.
 */
+RainbowChain* binary_search(RainbowTable* table, char* endpoint);
+
+/*
+    Generates a rainbow table of size `m0*TABLE_T`, where `m0` is the number of
+    rows (chains) `TABLE_T` is the number of plain texts in a chain.
+
+    The `table_number` parameter is used to discriminate rainbow tables so
+    they're not all similar.
+*/
+RainbowTable gen_table(unsigned char table_number, unsigned long m0);
+
+/*
+    Stores a table to the specified path.
+    No optimizations to the storage are done so the resulting file can be big.
+*/
+void store_table(RainbowTable* table, const char* file_path);
+
+// Loads a table previously stored on the disk.
+RainbowTable load_table(const char* file_path);
+
+// Inserts a chain in the rainbow `table`.
 void insert_chain(RainbowTable* table, char* startpoint, char* endpoint);
 
 // Deletes a table.
-void del_table(RainbowTable table);
+void del_table(RainbowTable* table);
 
-// Pretty-prints the hash of a cipher text.
-void print_hash(unsigned char cipher_text[]);
+// Pretty-prints the hash of a digest.
+void print_hash(unsigned char digest[]);
 
 // Pretty-prints a rainbow table.
-void print_table(RainbowTable table);
+void print_table(const RainbowTable* table);
 
 // Pretty prints the rainbow matrix corresponding to a rainbow table.
-void print_matrix(RainbowTable table);
+void print_matrix(const RainbowTable* table);
 
 /*
     Offline phase of the attack.
@@ -113,12 +151,12 @@ void offline(RainbowTable* rainbow_tables);
 /*
     Online phase of the attack.
 
-    Uses the pre-generated rainbow tables to guess
-    the plain text of the given cipher text.
+    Uses the pre-generated rainbow tables to guess the plain text of the given
+    digest.
 
     Returns in `password` the match if any, or returns an empty string.
 */
-void online(RainbowTable* rainbow_tables, unsigned char* cipher,
+void online(RainbowTable* rainbow_tables, unsigned char* digest,
             char* password);
 
 #endif

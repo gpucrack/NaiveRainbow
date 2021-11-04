@@ -11,9 +11,9 @@ int main() {
     offline(rainbow_tables);
 
     for (int i = 0; i < TABLE_COUNT; i++) {
-        print_table(rainbow_tables[i]);
+        print_table(&rainbow_tables[i]);
         printf("\n\n\n");
-        del_table(rainbow_tables[i]);
+        del_table(&rainbow_tables[i]);
     }
 
     return 0;
