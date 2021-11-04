@@ -132,7 +132,8 @@ RainbowTable gen_table(unsigned char table_number, unsigned long m0) {
             DEBUG_PRINT("\rprogress: %.2f%%", (float)i / m0 * 100);
         }
     }
-    DEBUG_PRINT("\n");
+    // the debug macro requires at least one variadic argument
+    DEBUG_PRINT("%s", "\n");
 
     // sort the rainbow table by the endpoints
     qsort(table.chains, table.length, sizeof(RainbowChain),
