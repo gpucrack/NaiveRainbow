@@ -11,7 +11,7 @@ int main() {
 
     for (unsigned char i = 0; i < TABLE_COUNT; i++) {
         char file_path[32];
-        sprintf(file_path, "length%d_%hhu.rt", MAX_PASSWORD_LENGTH, i);
+        sprintf(file_path, "length%d_%hhu.rt", PASSWORD_LENGTH, i);
         store_table(&tables[i], file_path);
     }
 

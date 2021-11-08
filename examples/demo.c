@@ -17,7 +17,7 @@ int main() {
     // print_matrix(rainbow_tables[0]);
 
     char* password = "crak";
-    assert(strlen(password) <= MAX_PASSWORD_LENGTH);
+    assert(strlen(password) == PASSWORD_LENGTH);
 
     unsigned char digest[HASH_LENGTH];
     HASH(password, strlen(password), digest);
@@ -26,7 +26,7 @@ int main() {
     print_hash(digest);
     printf(".\n\n");
 
-    char found[MAX_PASSWORD_LENGTH + 1];
+    char found[PASSWORD_LENGTH + 1];
 
     printf("Starting attack...\n");
     online(rainbow_tables, digest, found);

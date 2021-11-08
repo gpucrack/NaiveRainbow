@@ -6,7 +6,7 @@ int compare_rainbow_chains(const void* p1, const void* p2) {
     return strcmp(chain1->endpoint, chain2->endpoint);
 }
 
-char char_in_range(unsigned char n) {
+inline char char_in_range(unsigned char n) {
     assert(n >= 0 && n <= 63);
     static const char* chars =
         "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_";
@@ -14,48 +14,24 @@ char char_in_range(unsigned char n) {
     return chars[n];
 }
 
-void reduce_digest(unsigned char digest[], unsigned long iteration,
-                   unsigned char table_number, char* plain_text) {
-    unsigned long sum[MAX_PASSWORD_LENGTH] = {0};
-    unsigned long current_index = 0;
-
-    for (int i = 0; i < HASH_LENGTH; i++) {
-        sum[i % MAX_PASSWORD_LENGTH] += digest[i];
-    }
-
-    for (int i = 0; i < MAX_PASSWORD_LENGTH; i++) {
-        sum[i] = (sum[i] + iteration + table_number) % 65;
-        if (sum[i] != 64) {
-            plain_text[current_index] = char_in_range(sum[i]);
-            current_index++;
-        }
-    }
-
-    plain_text[current_index] = '\0';
-}
-
-void create_startpoint(unsigned long counter, char* plain_text) {
-    int startpoint_length = 1;
-    unsigned long old_thresold = 0;
-    unsigned long thresold = 64;
-
-    // get the length of the startpoint
-    while (counter >= thresold) {
-        startpoint_length++;
-        old_thresold = thresold;
-        thresold += pow(64, startpoint_length);
-    }
-
-    // the startpoint of length `startpoint_length` should start at 0
-    counter -= old_thresold;
-
-    // fill the startpoint with the corresponding characters
-    for (int i = startpoint_length - 1; i >= 0; i--) {
+inline void create_startpoint(unsigned long counter, char* plain_text) {
+    for (int i = PASSWORD_LENGTH - 1; i >= 0; i--) {
         plain_text[i] = char_in_range(counter % 64);
         counter /= 64;
     }
 
-    plain_text[startpoint_length] = '\0';
+    plain_text[PASSWORD_LENGTH] = '\0';
+}
+
+inline void reduce_digest(unsigned char* digest, unsigned long iteration,
+                          unsigned char table_number, char* plain_text) {
+    unsigned long counter = digest[PASSWORD_LENGTH];
+    for (char i = 6; i >= 0; i--) {
+        counter <<= 8;
+        counter |= digest[i];
+    }
+
+    create_startpoint(counter + iteration + table_number, plain_text);
 }
 
 inline void insert_chain(RainbowTable* table, char* startpoint,
@@ -100,7 +76,7 @@ RainbowTable gen_table(unsigned char table_number, unsigned long m0) {
 
     RainbowChain* chains = malloc(sizeof(RainbowChain) * m0);
     if (!chains) {
-        perror("Cannot allocate enough memory for the rainbow table.");
+        perror("Cannot allocate enough memory for the rainbow table");
         exit(EXIT_FAILURE);
     }
 
@@ -109,8 +85,8 @@ RainbowTable gen_table(unsigned char table_number, unsigned long m0) {
     // generate all rows
     for (unsigned long i = 0; i < m0; i++) {
         // generate the chain
-        char last_plain_text[MAX_PASSWORD_LENGTH + 1];
-        char startpoint[MAX_PASSWORD_LENGTH + 1];
+        char last_plain_text[PASSWORD_LENGTH + 1];
+        char startpoint[PASSWORD_LENGTH + 1];
         create_startpoint(i, startpoint);
         strcpy(last_plain_text, startpoint);
 
@@ -148,7 +124,7 @@ void store_table(RainbowTable* table, const char* file_path) {
     FILE* file = fopen(file_path, "w");
 
     if (!file) {
-        perror("Could not open file on disk!");
+        perror("Could not open file on disk");
         exit(EXIT_FAILURE);
     }
 
@@ -166,25 +142,29 @@ RainbowTable load_table(const char* file_path) {
     FILE* file = fopen(file_path, "r");
 
     if (!file) {
-        perror("Could not open file on disk!");
+        perror("Could not open file on disk");
         exit(EXIT_FAILURE);
     }
 
     RainbowTable table;
-    fscanf(file, "%lu %hhu\n", &table.length, &table.number);
+    table.length = 0;
 
-    RainbowChain* chains = malloc(sizeof(RainbowChain) * table.length);
+    unsigned long table_length;
+    fscanf(file, "%lu %hhu\n", &table_length, &table.number);
+
+    RainbowChain* chains = malloc(sizeof(RainbowChain) * table_length);
     table.chains = chains;
     if (!chains) {
-        perror("Cannot allocate enough memory to load this rainbow table.");
+        perror("Cannot allocate enough memory to load this rainbow table");
         exit(EXIT_FAILURE);
     }
 
-    char startpoint[MAX_PASSWORD_LENGTH + 1];
-    char endpoint[MAX_PASSWORD_LENGTH + 1];
+    char startpoint[PASSWORD_LENGTH + 1];
+    char endpoint[PASSWORD_LENGTH + 1];
     while (fscanf(file, "%s %s\n", startpoint, endpoint) != EOF) {
         insert_chain(&table, startpoint, endpoint);
     }
+    assert(table.length == table_length);
 
     fclose(file);
     return table;
@@ -207,7 +187,7 @@ void print_table(const RainbowTable* table) {
 
 void print_matrix(const RainbowTable* table) {
     for (unsigned long i = 0; i < table->length; i++) {
-        char plain_text[MAX_PASSWORD_LENGTH + 1];
+        char plain_text[PASSWORD_LENGTH + 1];
         unsigned char digest[HASH_LENGTH];
         strcpy(plain_text, table->chains[i].startpoint);
 
@@ -226,19 +206,16 @@ void print_matrix(const RainbowTable* table) {
 
 void offline(RainbowTable* rainbow_tables) {
     // the number of possible passwords
-    unsigned long long n = 0;
-    for (unsigned char i = 0; i <= MAX_PASSWORD_LENGTH; i++) {
-        n += pow(64, i);
-    }
+    unsigned long long n = pow(64, PASSWORD_LENGTH);
 
     // the expected number of unique chains
     unsigned long mtmax = 2 * n / (TABLE_T + 2);
 
-    // the starting number of chains, given the alpha coefficient
+    // the number of starting chains, given the alpha coefficient
+    // unsigned long m0 = n;
     unsigned long m0 = TABLE_ALPHA / (1 - TABLE_ALPHA) * mtmax;
 
-    // make sure there are at least some chains for the smaller password
-    // spaces
+    // make sure there are at least some chains for the smaller password spaces
     if (m0 < 10) {
         m0 = 10;
     }
@@ -261,7 +238,7 @@ void online(RainbowTable* rainbow_tables, unsigned char* digest,
         for (int j = 0; j < TABLE_COUNT; j++) {
             unsigned char tn = rainbow_tables[j].number;
 
-            char column_plain_text[MAX_PASSWORD_LENGTH + 1];
+            char column_plain_text[PASSWORD_LENGTH + 1];
             unsigned char column_digest[HASH_LENGTH];
             memcpy(column_digest, digest, HASH_LENGTH);
 
@@ -276,25 +253,35 @@ void online(RainbowTable* rainbow_tables, unsigned char* digest,
             RainbowChain* found =
                 binary_search(&rainbow_tables[j], column_plain_text);
 
+            // RainbowChain* found;
+            // for (unsigned long k = 0; k < rainbow_tables[j].length; k++) {
+            //     if (strcmp(rainbow_tables[j].chains[k].endpoint,
+            //                column_plain_text)) {
+            //         continue;
+            //     } else {
+            //         found = &rainbow_tables[j].chains[k];
+            //     }
+            // }
+
             if (!found) {
                 continue;
             }
 
             // we found a matching endpoint, reconstruct the chain
-            char chain_plain_text[MAX_PASSWORD_LENGTH + 1];
+            char chain_plain_text[PASSWORD_LENGTH + 1];
             unsigned char chain_digest[HASH_LENGTH];
             strcpy(chain_plain_text, found->startpoint);
 
-            for (unsigned long l = 0; l < i; l++) {
+            for (unsigned long k = 0; k < i; k++) {
                 HASH(chain_plain_text, strlen(chain_plain_text), chain_digest);
-                reduce_digest(chain_digest, l, tn, chain_plain_text);
+                reduce_digest(chain_digest, k, tn, chain_plain_text);
             }
             HASH(chain_plain_text, strlen(chain_plain_text), chain_digest);
 
             /*
-            The digest was indeed present in the chain, this was
-            not a false positive from a reduction. We found a
-            plain text that matches the digest!
+                The digest was indeed present in the chain, this was
+                not a false positive from a reduction. We found a
+                plain text that matches the digest!
             */
             if (!memcmp(chain_digest, digest, HASH_LENGTH)) {
                 strcpy(password, chain_plain_text);

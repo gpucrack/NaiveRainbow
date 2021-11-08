@@ -11,8 +11,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-// The max password length in the rainbow tables.
-#define MAX_PASSWORD_LENGTH 5
+// The password length in the rainbow tables.
+#define PASSWORD_LENGTH 5
 
 // The hash function used.
 #define HASH SHA1
@@ -25,13 +25,14 @@
     offline phase is alpha*mtmax, where mtmax is the expected maximum number of
     chains in a rainbow table.
 */
+// #define TABLE_ALPHA 1
 #define TABLE_ALPHA 0.952
 
 // The length of a chain in the table.
 #define TABLE_T 10000
 
 // The number of tables.
-#define TABLE_COUNT 4
+#define TABLE_COUNT 1
 
 // Uncomment to show debug prints in release mode.
 #define DEBUG_TEST 1
@@ -52,8 +53,8 @@
     It contains a startpoint and an endpoint.
 */
 typedef struct {
-    char startpoint[MAX_PASSWORD_LENGTH + 1];
-    char endpoint[MAX_PASSWORD_LENGTH + 1];
+    char startpoint[PASSWORD_LENGTH + 1];
+    char endpoint[PASSWORD_LENGTH + 1];
 } RainbowChain;
 
 /*
@@ -86,8 +87,7 @@ char char_in_range(unsigned char n);
     The nth `iteration` reduction function should give the nth+1 plain text
     reduction. The `table number` is to discriminate different tables.
 
-    We sum in an array of the size of the plain text and take the modulo to get
-    an alphanumeric char.
+    Implementation inspired by https://github.com/jtesta/rainbowcrackalack.
 */
 void reduce_digest(unsigned char digest[], unsigned long iteration,
                    unsigned char table_number, char* plain_text);
