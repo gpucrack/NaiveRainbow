@@ -14,24 +14,36 @@ inline char char_in_range(unsigned char n) {
     return chars[n];
 }
 
-inline void create_startpoint(unsigned long counter, char* plain_text) {
+inline void reduce_digest(unsigned char* digest, unsigned long iteration,
+                          unsigned char table_number, char* plain_text) {
+    // pseudo-random counter based on the hash
+    unsigned long counter = digest[7];
+    for (char i = 6; i >= 0; i--) {
+        counter <<= 8;
+        counter |= digest[i];
+    }
+
+    /*
+        Get a plain text using the above counter.
+        We multiply the table number by the iteration to have
+        tables with reduction functions that are different enough
+        (just adding the table number isn't optimal).
+
+        The overflow that can happen on the counter variable isn't
+        an issue since it happens reliably.
+
+        https://www.gnu.org/software/autoconf/manual/autoconf-2.63/html_node/Integer-Overflow-Basics.html
+    */
+    create_startpoint(counter + iteration * table_number, plain_text);
+}
+
+void create_startpoint(unsigned long counter, char* plain_text) {
     for (int i = PASSWORD_LENGTH - 1; i >= 0; i--) {
         plain_text[i] = char_in_range(counter % 64);
         counter /= 64;
     }
 
     plain_text[PASSWORD_LENGTH] = '\0';
-}
-
-inline void reduce_digest(unsigned char* digest, unsigned long iteration,
-                          unsigned char table_number, char* plain_text) {
-    unsigned long counter = digest[PASSWORD_LENGTH];
-    for (char i = 6; i >= 0; i--) {
-        counter <<= 8;
-        counter |= digest[i];
-    }
-
-    create_startpoint(counter + iteration + table_number, plain_text);
 }
 
 inline void insert_chain(RainbowTable* table, char* startpoint,
@@ -72,7 +84,7 @@ void dedup_endpoints(RainbowTable* table) {
 }
 
 RainbowTable gen_table(unsigned char table_number, unsigned long m0) {
-    DEBUG_PRINT("Generating table, m0: %lu\n", m0);
+    DEBUG_PRINT("\nGenerating table %hhu\n", table_number);
 
     RainbowChain* chains = malloc(sizeof(RainbowChain) * m0);
     if (!chains) {
@@ -105,17 +117,22 @@ RainbowTable gen_table(unsigned char table_number, unsigned long m0) {
         insert_chain(&table, startpoint, last_plain_text);
 
         if (i % 1000 == 0) {
-            DEBUG_PRINT("\rprogress: %.2f%%", (float)i / m0 * 100);
+            DEBUG_PRINT("\rprogress: %.2f%%", (float)(i + 1) / m0 * 100);
         }
     }
     // the debug macro requires at least one variadic argument
-    DEBUG_PRINT("%s", "\n");
+    DEBUG_PRINT("%s", " DONE\n");
 
     // sort the rainbow table by the endpoints
+    DEBUG_PRINT("%s", "Sorting table...");
     qsort(table.chains, table.length, sizeof(RainbowChain),
           compare_rainbow_chains);
+    DEBUG_PRINT("%s", " DONE\n");
 
+    // deduplicates chains with similar endpoints
+    DEBUG_PRINT("%s", "Deleting duplicate endpoints...");
     dedup_endpoints(&table);
+    DEBUG_PRINT("%s", " DONE\n");
 
     return table;
 }
@@ -172,7 +189,7 @@ RainbowTable load_table(const char* file_path) {
 
 void del_table(RainbowTable* table) { free(table->chains); }
 
-void print_hash(unsigned char digest[]) {
+void print_hash(const unsigned char* digest) {
     for (int i = 0; i < HASH_LENGTH; i++) {
         printf("%02x", digest[i]);
     }
@@ -212,16 +229,18 @@ void offline(RainbowTable* rainbow_tables) {
     unsigned long mtmax = 2 * n / (TABLE_T + 2);
 
     // the number of starting chains, given the alpha coefficient
-    // unsigned long m0 = n;
     unsigned long m0 = TABLE_ALPHA / (1 - TABLE_ALPHA) * mtmax;
 
-    // make sure there are at least some chains for the smaller password spaces
-    if (m0 < 10) {
-        m0 = 10;
-    }
+    DEBUG_PRINT(
+        "Generating %hhu table(s)\n"
+        "Password length = %hhu\n"
+        "Chain length (t) = %lu\n"
+        "Maximality factor (alpha) = %.3f\n"
+        "Optimal number of starting chains given alpha (m0) = %lu\n",
+        TABLE_COUNT, PASSWORD_LENGTH, TABLE_T, TABLE_ALPHA, m0);
 
     for (unsigned char i = 0; i < TABLE_COUNT; i++) {
-        rainbow_tables[i] = gen_table(i, m0);
+        rainbow_tables[i] = gen_table(i + 1, m0);
     }
 }
 
@@ -252,16 +271,6 @@ void online(RainbowTable* rainbow_tables, unsigned char* digest,
 
             RainbowChain* found =
                 binary_search(&rainbow_tables[j], column_plain_text);
-
-            // RainbowChain* found;
-            // for (unsigned long k = 0; k < rainbow_tables[j].length; k++) {
-            //     if (strcmp(rainbow_tables[j].chains[k].endpoint,
-            //                column_plain_text)) {
-            //         continue;
-            //     } else {
-            //         found = &rainbow_tables[j].chains[k];
-            //     }
-            // }
 
             if (!found) {
                 continue;

@@ -1,7 +1,6 @@
 add_executable(demo demo.c)
 target_link_libraries(demo NaiveRainbow)
 
-
 add_executable(coverage coverage.c)
 target_link_libraries(coverage NaiveRainbow)
 

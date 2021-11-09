@@ -4,28 +4,19 @@
 #include <stdlib.h>
 
 /*
-    Calculates the coverage of one rainbow table.
+    Calculates the coverage of rainbow tables.
+    This generates `TABLE_COUNT` tables, and tries to
+    crack `n` passwords with it.
 
-    Set these parameters in rainbow.h beforehand:
-    TABLE_COUNT 1
-    TABLE_T 10000
-    PASSWORD_LENGTH 3
+    With 1 rainbow table, the succes rate should be close to 86.5%.
+    With 4 rainbow tables, the success rate should be close to 99.96%.
 */
 int main() {
     RainbowTable rainbow_tables[TABLE_COUNT];
     offline(rainbow_tables);
-    print_table(&rainbow_tables[0]);
-    // store_table(&rainbow_tables[0], "length4.rt");
 
-    // for (unsigned char i = 0; i < TABLE_COUNT; i++) {
-    //     char file_name[32];
-    //     sprintf(file_name, "length%hhu_%hhu.rt", PASSWORD_LENGTH, i);
-    //     rainbow_tables[i] = load_table(file_name);
-    // }
-    // rainbow_tables[0] = load_table("length4.rt");
-    // print_table(&rainbow_tables[0]);
-
-    unsigned long n = 10000;
+    const unsigned long n = 10000;
+    printf("\nTrying to crack %lu passwords\n", n);
 
     unsigned long found = 0;
     for (unsigned long i = 0; i < n; i++) {
@@ -54,12 +45,14 @@ int main() {
         if (p_high > 100) p_high = 100;
 
         if (confidence > 0.001) {
-            printf("\rprogress: %.2f%% | success rate: %.2f%% [%.2f%%, %.2f%%]",
-                   progress, f * 100, p_low, p_high);
+            printf(
+                "\rprogress: %.2f%% | success rate: %.2f%% [%.2f%%, %.2f%%]  ",
+                progress, f * 100, p_low, p_high);
         } else {
             // our confidence is high enough, just display the success rate
-            printf("\rprogress: %.2f%% | success rate: %.2f%%                 ",
-                   progress, f * 100);
+            printf(
+                "\rprogress: %.2f%% | success rate: %.2f%%                   ",
+                progress, f * 100);
         }
         fflush(stdout);
     }

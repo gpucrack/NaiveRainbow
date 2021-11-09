@@ -12,7 +12,7 @@
 #include <string.h>
 
 // The password length in the rainbow tables.
-#define PASSWORD_LENGTH 5
+#define PASSWORD_LENGTH 3
 
 // The hash function used.
 #define HASH SHA1
@@ -25,20 +25,19 @@
     offline phase is alpha*mtmax, where mtmax is the expected maximum number of
     chains in a rainbow table.
 */
-// #define TABLE_ALPHA 1
 #define TABLE_ALPHA 0.952
 
 // The length of a chain in the table.
 #define TABLE_T 10000
 
 // The number of tables.
-#define TABLE_COUNT 1
+#define TABLE_COUNT 4
 
-// Uncomment to show debug prints in release mode.
+// Comment to hide debug prints in release mode.
 #define DEBUG_TEST 1
 
 // Handy macro for debug prints.
-#if defined NDEBUG || defined DEBUG_TEST
+#if !defined NDEBUG || defined DEBUG_TEST
 #define DEBUG_TEST 1
 #else
 #define DEBUG_TEST 0
@@ -65,7 +64,7 @@ int compare_rainbow_chains(const void* p1, const void* p2);
 /*
     A rainbow table.
     It's an array of chains, with a length. We store the table number as well,
-    since multiple tables need to have different reductions functions.
+    since multiple tables need to have different reduction functions.
 */
 typedef struct {
     RainbowChain* chains;
@@ -78,7 +77,7 @@ typedef struct {
    range. Look at an ASCII table to better understand this function
    (https://www.asciitable.com/).
 */
-char char_in_range(unsigned char n);
+inline char char_in_range(unsigned char n);
 
 /*
     A reduce operation, which returns a plain text for a given `digest`,
@@ -89,8 +88,8 @@ char char_in_range(unsigned char n);
 
     Implementation inspired by https://github.com/jtesta/rainbowcrackalack.
 */
-void reduce_digest(unsigned char digest[], unsigned long iteration,
-                   unsigned char table_number, char* plain_text);
+inline void reduce_digest(unsigned char* digest, unsigned long iteration,
+                          unsigned char table_number, char* plain_text);
 
 /*
     Transforms a startpoint from a counter to a valid password.
@@ -119,8 +118,8 @@ RainbowChain* binary_search(RainbowTable* table, char* endpoint);
 RainbowTable gen_table(unsigned char table_number, unsigned long m0);
 
 /*
-    Stores a table to the specified path.
-    No optimizations to the storage are done so the resulting file can be big.
+    Stores a table to the specified `file_path`.
+    No optimizations on the storage are done so the resulting file can be big.
 */
 void store_table(RainbowTable* table, const char* file_path);
 
@@ -134,7 +133,7 @@ void insert_chain(RainbowTable* table, char* startpoint, char* endpoint);
 void del_table(RainbowTable* table);
 
 // Pretty-prints the hash of a digest.
-void print_hash(unsigned char digest[]);
+void print_hash(const unsigned char* digest);
 
 // Pretty-prints a rainbow table.
 void print_table(const RainbowTable* table);
@@ -152,7 +151,7 @@ void offline(RainbowTable* rainbow_tables);
     Online phase of the attack.
 
     Uses the pre-generated rainbow tables to guess the plain text of the given
-    digest.
+    `digest`.
 
     Returns in `password` the match if any, or returns an empty string.
 */
