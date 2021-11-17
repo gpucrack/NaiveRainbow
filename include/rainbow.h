@@ -77,7 +77,7 @@ typedef struct {
    range. Look at an ASCII table to better understand this function
    (https://www.asciitable.com/).
 */
-inline char char_in_range(unsigned char n);
+char char_in_range(unsigned char n);
 
 /*
     A reduce operation, which returns a plain text for a given `digest`,
@@ -88,7 +88,7 @@ inline char char_in_range(unsigned char n);
 
     Implementation inspired by https://github.com/jtesta/rainbowcrackalack.
 */
-inline void reduce_digest(unsigned char* digest, unsigned long iteration,
+void reduce_digest(unsigned char* digest, unsigned long iteration,
                           unsigned char table_number, char* plain_text);
 
 /*

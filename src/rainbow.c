@@ -6,7 +6,7 @@ int compare_rainbow_chains(const void* p1, const void* p2) {
     return strcmp(chain1->endpoint, chain2->endpoint);
 }
 
-inline char char_in_range(unsigned char n) {
+char char_in_range(unsigned char n) {
     assert(n >= 0 && n <= 63);
     static const char* chars =
         "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_";
@@ -14,7 +14,7 @@ inline char char_in_range(unsigned char n) {
     return chars[n];
 }
 
-inline void reduce_digest(unsigned char* digest, unsigned long iteration,
+void reduce_digest(unsigned char* digest, unsigned long iteration,
                           unsigned char table_number, char* plain_text) {
     // pseudo-random counter based on the hash
     unsigned long counter = digest[7];
