@@ -12,13 +12,15 @@
 #include <string.h>
 
 // The password length in the rainbow tables.
-#define PASSWORD_LENGTH 3
+#define PASSWORD_LENGTH 7
 
 // The hash function used.
 #define HASH SHA1
 
+#define CHARSET_LENGTH 62
+
 // The length of the digest produced by the hash function.
-#define HASH_LENGTH 20
+#define HASH_LENGTH 16
 
 /*
     The maximality factor, such as the number of chains at the end of the
@@ -35,6 +37,9 @@
 
 // Comment to hide debug prints in release mode.
 #define DEBUG_TEST 1
+
+// A macro to have a ceil-like function.
+#define CEILING(x, y) (((x) + (y)-1) / (y))
 
 // Handy macro for debug prints.
 #if !defined NDEBUG || defined DEBUG_TEST
@@ -55,6 +60,19 @@ typedef struct {
     char startpoint[PASSWORD_LENGTH + 1];
     char endpoint[PASSWORD_LENGTH + 1];
 } RainbowChain;
+
+// A password put into a union. This is easier to use with malloc and crypto
+// functions.
+typedef union {
+    uint8_t bytes[PASSWORD_LENGTH];
+    uint32_t i[CEILING(PASSWORD_LENGTH, 4)];
+} Password;
+
+// A digest put into a union.
+typedef union {
+    uint8_t bytes[HASH_LENGTH];
+    uint32_t i[CEILING(HASH_LENGTH, 4)];
+} Digest;
 
 /*
     A way of comparing two chains to sort them by ascending endpoints.
